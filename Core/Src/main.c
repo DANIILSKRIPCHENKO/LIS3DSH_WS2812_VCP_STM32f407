@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -42,10 +43,18 @@
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 DMA_HandleTypeDef hdma_tim1_ch1;
 
 /* USER CODE BEGIN PV */
-
+int AngleX = 0;
+int AngleY = 0;
+int AngleZ = 0;
+double accelerationX = 0;
+double accelerationY = 0;
+float g = 9.8;
+char Send[80];
+int8_t CurrentLedNumber=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -53,6 +62,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -415,6 +425,113 @@ void Delay_ms (uint16_t ms)
 	}
 }
 
+void FillBuffer()
+{
+	memset(Send, 0, sizeof Send);
+
+	char buf[5];
+	strcpy(Send, "X: ");
+	itoa(AngleX, buf, 10);
+	strcat(Send, buf);
+	strcat(Send, "  ");
+	strcat(Send, "Y: ");
+	itoa(AngleY, buf, 10);
+	strcat(Send, buf);
+	strcat(Send, "  ");
+	if(CurrentLedNumber != -1)
+	{
+		strcat(Send, "R: ");
+		itoa(LED_Data[CurrentLedNumber][2], buf, 10);
+		strcat(Send, buf);
+		strcat(Send, "  ");
+
+		strcat(Send, "G: ");
+		itoa(LED_Data[CurrentLedNumber][1], buf, 10);
+		strcat(Send, buf);
+		strcat(Send, "  ");
+
+		strcat(Send, "B: ");
+		itoa(LED_Data[CurrentLedNumber][3], buf, 10);
+		strcat(Send, buf);
+		strcat(Send, "  ");
+
+	}
+	strcat(Send, "     ");
+
+
+}
+
+void ChooseLED(int AngleY)
+{
+	if (abs(AngleY)>0 && abs(AngleY)<=15 )
+		 	  	 {
+		 		  	Set_LED(0, 0, 0, 0);
+		 		    Set_LED(1, 0, 0, 0);
+		 		    Set_LED(2, 0, 0, 0);
+		 		    Set_LED(3, 0, 0, 0);
+		 		    Set_LED(4, 0, 0, 0);
+		 		    CurrentLedNumber = -1;
+		 	  	 }
+
+		  if (abs(AngleY)>15 && abs(AngleY)<=30 )
+		  	 {
+			  	Set_LED(0, 0, 0, 255);
+			    Set_LED(1, 0, 0, 0);
+			    Set_LED(2, 0, 0, 0);
+			    Set_LED(3, 0, 0, 0);
+			    Set_LED(4, 0, 0, 0);
+			    CurrentLedNumber = 0;
+		  	 }
+
+		  if (abs(AngleY)>30 && abs(AngleY)<=45)
+		  	 {
+			  	Set_LED(0, 0, 0, 0);
+				Set_LED(1, 0, 247, 255);
+				Set_LED(2, 0, 0, 0);
+				Set_LED(3, 0, 0, 0);
+				Set_LED(4, 0, 0, 0);
+				CurrentLedNumber = 1;
+		  	 }
+
+		  if (abs(AngleY)>45 && abs(AngleY)<=60)
+		  	 {
+			  	Set_LED(0, 0, 0, 0);
+				Set_LED(1, 0, 0, 0);
+				Set_LED(2, 0, 255, 0);
+				Set_LED(3, 0, 0, 0);
+				Set_LED(4, 0, 0, 0);
+				CurrentLedNumber = 2;
+		  	 }
+
+		  if (abs(AngleY)>60 && abs(AngleY)<=75)
+		  	 {
+			  	Set_LED(0, 0, 0, 0);
+				Set_LED(1, 0, 0, 0);
+				Set_LED(2, 0, 0, 0);
+				Set_LED(3, 255, 238, 0);
+				Set_LED(4, 0, 0, 0);
+				CurrentLedNumber = 3;
+		  	 }
+
+		  if (abs(AngleY)>75)
+		  	 {
+			  	Set_LED(0, 0, 0, 0);
+				Set_LED(1, 0, 0, 0);
+				Set_LED(2, 0, 0, 0);
+				Set_LED(3, 0, 0, 0);
+				Set_LED(4, 255, 0, 0);
+				CurrentLedNumber = 4;
+		  	 }
+
+}
+
+void CulcAngles()
+{
+	accelerationX = AxesData.X*0.0102;
+	AngleX = round((asin(accelerationX/g))*180/3.14);
+	accelerationY = AxesData.Y*0.0102;
+	AngleY = round((asin(accelerationY/g))*180/3.14);
+}
 /* USER CODE END 0 */
 
 /**
@@ -447,6 +564,8 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_TIM1_Init();
+  MX_USB_DEVICE_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   GPIOConfig();
@@ -455,7 +574,7 @@ int main(void)
   SPICongig();
   CS_Disable();
   SPI_Enable();
-
+  HAL_TIM_Base_Start_IT(&htim2);
   LIS3DSH_Initialise(LIS3DSH_Sensitivity_2G, LIS3DSH_Filter_50Hz);
 
   /* USER CODE END 2 */
@@ -464,132 +583,11 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
-
-
-
 	  TM_LIS3DSH_INT_ReadAxes(&AxesData);
-
-	  if (AxesData.Y>-150 && AxesData.Y<150 )
-	 	  	 {
-	 		  	Set_LED(0, 0, 0, 0);
-	 		    Set_LED(1, 0, 0, 0);
-	 		    Set_LED(2, 0, 0, 0);
-	 		    Set_LED(3, 0, 0, 0);
-	 		    Set_LED(4, 0, 0, 0);
-	 	  	 }
-
-	  if (AxesData.Y>150 && AxesData.Y<300 )
-	  	 {
-		  	Set_LED(0, 0, 0, 255);
-		    Set_LED(1, 0, 0, 0);
-		    Set_LED(2, 0, 0, 0);
-		    Set_LED(3, 0, 0, 0);
-		    Set_LED(4, 0, 0, 0);
-	  	 }
-	  if (AxesData.Y>300 && AxesData.Y<450)
-	  	 {
-		  	Set_LED(0, 0, 0, 0);
-			   Set_LED(1, 0, 247, 255);
-			    Set_LED(2, 0, 0, 0);
-			    Set_LED(3, 0, 0, 0);
-			    Set_LED(4, 0, 0, 0);
-	  	 }
-	  if (AxesData.Y>450 && AxesData.Y<600)
-	  	 {
-		  	Set_LED(0, 0, 0, 0);
-			    Set_LED(1, 0, 0, 0);
-			    Set_LED(2, 0, 255, 0);
-			    Set_LED(3, 0, 0, 0);
-			    Set_LED(4, 0, 0, 0);
-	  	 }
-	  if (AxesData.Y>600 && AxesData.Y<750)
-	  	 {
-		  	Set_LED(0, 0, 0, 0);
-			    Set_LED(1, 0, 0, 0);
-			    Set_LED(2, 0, 0, 0);
-			    Set_LED(3, 255, 238, 0);
-			    Set_LED(4, 0, 0, 0);
-	  	 }
-	  if (AxesData.Y>750)
-	  	 {
-		  	Set_LED(0, 0, 0, 0);
-			    Set_LED(1, 0, 0, 0);
-			    Set_LED(2, 0, 0, 0);
-			    Set_LED(3, 0, 0, 0);
-			    Set_LED(4, 255, 0, 0);
-	  	 }
-
-	  if (AxesData.Y<-150 && AxesData.Y>-300 )
-	  	  	 {
-	  		  	Set_LED(0, 0, 0, 255);
-	  		    Set_LED(1, 0, 0, 0);
-	  		    Set_LED(2, 0, 0, 0);
-	  		    Set_LED(3, 0, 0, 0);
-	  		    Set_LED(4, 0, 0, 0);
-	  	  	 }
-	  	  if (AxesData.Y<-300 && AxesData.Y>-450)
-	  	  	 {
-	  		  	Set_LED(0, 0, 0, 0);
-	  			   Set_LED(1, 0, 247, 255);
-	  			    Set_LED(2, 0, 0, 0);
-	  			    Set_LED(3, 0, 0, 0);
-	  			    Set_LED(4, 0, 0, 0);
-	  	  	 }
-	  	  if (AxesData.Y<-450 && AxesData.Y>-600)
-	  	  	 {
-	  		  	Set_LED(0, 0, 0, 0);
-	  			    Set_LED(1, 0, 0, 0);
-	  			    Set_LED(2, 0, 255, 0);
-	  			    Set_LED(3, 0, 0, 0);
-	  			    Set_LED(4, 0, 0, 0);
-	  	  	 }
-	  	  if (AxesData.Y<-600 && AxesData.Y>-750)
-	  	  	 {
-	  		  	Set_LED(0, 0, 0, 0);
-	  			    Set_LED(1, 0, 0, 0);
-	  			    Set_LED(2, 0, 0, 0);
-	  			    Set_LED(3, 255, 238, 0);
-	  			    Set_LED(4, 0, 0, 0);
-	  	  	 }
-	  	  if (AxesData.Y<-750)
-	  	  	 {
-	  		  	Set_LED(0, 0, 0, 0);
-	  			    Set_LED(1, 0, 0, 0);
-	  			    Set_LED(2, 0, 0, 0);
-	  			    Set_LED(3, 0, 0, 0);
-	  			    Set_LED(4, 255, 0, 0);
-	  	  	 }
-
-
-	    WS2812_Send();
-	    Delay_ms(1);
-
-	    /*
-
-	  if (AxesData.Y<150)
-	  	  {
-
-	  	  }
-	  if (AxesData.Y<-300)
-	  	  {
-
-	  	  }
-	  if (AxesData.Y<-450)
-	  	  {
-
-	  	  }
-	  if (AxesData.Y<-600)
-	  	  {
-
-	  	  }
-	  if (AxesData.Y<-750)
-	  	  {
-
-	  	  }
-	  */
-
-
+	  CulcAngles();
+	  ChooseLED(AngleY);
+	  WS2812_Send();
+	  FillBuffer();
 
     /* USER CODE END WHILE */
 
@@ -621,7 +619,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 4;
   RCC_OscInitStruct.PLL.PLLN = 72;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLQ = 3;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -717,6 +715,51 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 64;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 6750000;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -743,10 +786,16 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
 
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	CDC_Transmit_FS(Send, strlen(Send));
+}
 
 /* USER CODE END 4 */
 
